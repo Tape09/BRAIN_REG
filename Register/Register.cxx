@@ -9,6 +9,7 @@
 #include "itkSimilarity3DTransform.h"
 #include "itkImageRegistrationMethod.h"
 #include "itkMutualInformationImageToImageMetric.h"
+#include "itkMeanSquaresImageToImageMetric.h"
 #include "itkRegularStepGradientDescentOptimizer.h"
 #include "itkLinearInterpolateImageFunction.h"
 #include "itkNormalizeImageFilter.h"
@@ -28,11 +29,12 @@ typedef itk::ImageDuplicator< ImageType > DuplicatorType;
 typedef itk::AffineTransform<double, 3> TransformType;
 //typedef itk::Similarity3DTransform<double> TransformType;
 typedef itk::RegularStepGradientDescentOptimizer OptimizerType;
-typedef itk::MutualInformationImageToImageMetric<ImageType, ImageType> MetricType;
+//typedef itk::MutualInformationImageToImageMetric<ImageType, ImageType> MetricType;
+typedef itk::MeanSquaresImageToImageMetric<ImageType, ImageType> MetricType;
 typedef itk::LinearInterpolateImageFunction<ImageType, double> InterpolatorType;
 typedef itk::ImageRegistrationMethod<ImageType, ImageType> RegistrationType;
 //typedef itk::DiscreteGaussianImageFilter<double, double> GaussianFilterType;
-//typedef itk::MeanSquaresImageToImageMetric<ImageType, ImageType> MetricType;
+
 
 typedef RegistrationType::ParametersType ParametersType;
 
@@ -73,7 +75,7 @@ public:
 int main(int argc, char *argv[])
 {
 
-	if (argc < 3) {
+	if (argc < 4) {
 		cerr << "INPUT FAIL" << endl;
 	}
 
@@ -147,8 +149,8 @@ int main(int argc, char *argv[])
 	optimizer->SetMaximumStepLength(0.1);
 	optimizer->SetMinimumStepLength(0.0001);
 	optimizer->SetNumberOfIterations(300);
-	optimizer->MaximizeOn();
-	//optimizer->MinimizeOn();
+	//optimizer->MaximizeOn();
+	optimizer->MinimizeOn();
 
 	double translationScale = 1.0 / 1000.0;
 	typedef OptimizerType::ScalesType       OptimizerScalesType;
@@ -197,13 +199,13 @@ int main(int argc, char *argv[])
 // OPTIMIZER PARAMETERS END
 
 // METRIC PARAMETERS BEGIN
-	metric->SetFixedImageStandardDeviation(0.4);
-	metric->SetMovingImageStandardDeviation(0.4);
+	//metric->SetFixedImageStandardDeviation(0.4);
+	//metric->SetMovingImageStandardDeviation(0.4);
 
-	const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
-	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.0001);
+	//const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
+	//const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.001);
 
-	metric->SetNumberOfSpatialSamples(numberOfSamples);
+	//metric->SetNumberOfSpatialSamples(numberOfSamples);
 // METRIC PARAMETERS END
 
 // OBSERVER
@@ -251,7 +253,7 @@ int main(int argc, char *argv[])
 	std::cout << "Result = " << std::endl;
 	std::cout << " Iterations    = " << numberOfIterations << std::endl;
 	std::cout << " Metric value  = " << bestValue << std::endl;
-	std::cout << " Numb. Samples = " << numberOfSamples << std::endl;
+	//std::cout << " Numb. Samples = " << numberOfSamples << std::endl;
 
 	typedef itk::ResampleImageFilter<ImageType, ImageType > ResampleFilterType;
 
@@ -272,7 +274,7 @@ int main(int argc, char *argv[])
 	//resample->SetDefaultPixelValue(100);
 
 	WriterType::Pointer writer = WriterType::New();
-	writer->SetFileName("output.nii.gz");
+	writer->SetFileName(argv[3]);
 	writer->SetInput(resample->GetOutput());
 	writer->Update();
 
