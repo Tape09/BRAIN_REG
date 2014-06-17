@@ -25,42 +25,41 @@ using namespace itk;
 
 int main(int argc, char *argv[]) {
 
-	if (argc < 6) {
+	if (argc < 7) {
 		cout << "Please specify:" << endl;
 		cout << " Input Directory" << endl;
 		cout << " Output Directory" << endl;
-		cout << " Output Image Name" << endl;
-		cout << " Output Transform Name" << endl;
+		cout << " Fixed Image Name" << endl;
+		cout << " Output Name" << endl;
 		cout << " Transform Type" << endl;
+		cout << " Registration Program" << endl;
 		return EXIT_FAILURE;
 	} 
 
 	string input_dir_path(argv[1]);
 	string output_dir_path(argv[2]);
-	string output_img_name(argv[3]);
+	string fixed_image_path(argv[3]);
+	string output_img_name(argv[4]);
+	output_img_name += ".nii";
 	string output_tfm_name(argv[4]);
+	output_tfm_name += ".tfm";
 	string transform_type(argv[5]);
+	string registration(argv[6]);
 
 	string output_tfm_dir_path(output_dir_path + "/transforms");
 	string output_img_dir_path(output_dir_path + "/images");
 
 	int pos;
 
-	pos = output_img_name.find_first_of(".");
-	string output_img_name_short = output_img_name.substr(0, pos);
-	string output_img_name_ext = output_img_name.substr(pos);
+	
+	string output_img_name_short = argv[4];
+	string output_img_name_ext = ".nii";
+	
+	string output_tfm_name_short = argv[4];
+	string output_tfm_name_ext = ".tfm";
 
-	pos = output_tfm_name.find_first_of(".");
-	string output_tfm_name_short = output_tfm_name.substr(0, pos);
-	string output_tfm_name_ext = output_tfm_name.substr(pos);
-
-	string registration;
-
-	if (argc == 7) {
-		registration = argv[6];
-	} else {
-		registration = "test.exe";
-	}
+	pos = fixed_image_path.find_last_of("/");
+	string fixed_image_name = fixed_image_path.substr(pos+1);
 
 	Directory::Pointer input_dir = Directory::New();
 	Directory::Pointer output_dir = Directory::New();
@@ -92,6 +91,7 @@ int main(int argc, char *argv[]) {
 
 	string command;
 	string file_path;
+	string file_name;
 	string output_img_path;
 	string output_tfm_path;
 
@@ -99,7 +99,7 @@ int main(int argc, char *argv[]) {
 	Directory::Pointer test_file = Directory::New();
 
 	bool got_fixed_image = false;
-	string fixed_image_path;
+	//string fixed_image_path;
 	string moving_image_path;
 
 	int counter = 0;
@@ -107,14 +107,11 @@ int main(int argc, char *argv[]) {
 	for (int i = 2; i < input_dir->GetNumberOfFiles(); ++i) {
 		file_path = input_dir_path + "/" + input_dir->GetFile(i);
 		test_file->Load(file_path.c_str());
+		file_name = input_dir->GetFile(i);
 
 		if (test_file->GetNumberOfFiles() > 0) continue;
 
-		if (!got_fixed_image) {
-			fixed_image_path = file_path;
-			got_fixed_image = true;
-			continue;
-		}
+		if (fixed_image_name == file_name) continue; 		
 
 		moving_image_path = file_path;
 		output_img_path = output_img_dir_path + "/" + output_img_name_short + to_string(counter) + output_img_name_ext;
@@ -134,6 +131,7 @@ int main(int argc, char *argv[]) {
 		cout << "output_image: " << output_img_path << endl;
 		cout << "output_transform: " << output_tfm_path << endl;
 		cout << "transform_type: " << transform_type << endl;
+		cout << "command: " << command << endl;
 		cout << "--" << endl;
 
 		system(command.c_str());
