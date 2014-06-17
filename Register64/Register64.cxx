@@ -583,9 +583,9 @@ void RegisterImages_MIAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 	// OPTIMIZER PARAMETERS END
 
 	// METRIC PARAMETERS BEGIN
-	metric->SetNumberOfHistogramBins(500);
+	metric->SetNumberOfHistogramBins(50);
 	const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
-	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.1);
+	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.2);
 	metric->SetNumberOfSpatialSamples(numberOfSamples);
 	// METRIC PARAMETERS END
 
@@ -812,7 +812,7 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 
 
 	// TRANSFORM PARAMETERS BEGIN
-	unsigned int numberOfGridNodesInOneDimension = 7;
+	unsigned int numberOfGridNodesInOneDimension = 25;
 	TransformTypeBSpline::PhysicalDimensionsType fixedPhysicalDimensions;
 	TransformTypeBSpline::MeshSizeType meshSize;
 	TransformTypeBSpline::OriginType fixedOrigin;
@@ -833,9 +833,9 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 	// TRANSFORM PARAMETERS END
 
 	// METRIC PARAMETERS BEGIN
-	metric->SetNumberOfHistogramBins(500);
+	metric->SetNumberOfHistogramBins(50);
 	const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
-	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.1);
+	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.2);
 	metric->SetNumberOfSpatialSamples(numberOfSamples);
 	// METRIC PARAMETERS END
 
@@ -854,7 +854,7 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 	optimizer->SetLowerBound(lowerBound);
 
 	optimizer->SetCostFunctionConvergenceFactor(1.e7);
-	optimizer->SetProjectedGradientTolerance(1e-4);
+	optimizer->SetProjectedGradientTolerance(1e-5);
 	optimizer->SetMaximumNumberOfIterations(500);
 	optimizer->SetMaximumNumberOfEvaluations(500);
 	optimizer->SetMaximumNumberOfCorrections(10);
