@@ -30,7 +30,10 @@
 #include "itkCastImageFilter.h"
 #include "itkImageToHistogramFilter.h"
 #include "itkMedianImageFilter.h"
+#include "itkDisplacementFieldTransform.h"
+#include "itkIterativeInverseDisplacementFieldImageFilter.h"
 
+#include <deque>
 #include <math.h>
 #include <iostream>
 #include <string>
@@ -41,11 +44,14 @@ typedef itk::ImageFileReader<ImageType> ReaderType;
 typedef itk::ImageFileWriter< ImageType  > WriterType;
 typedef itk::ImageDuplicator< ImageType > DuplicatorType;
 
+typedef itk::Vector<double, 3> VectorType;
+typedef itk::Point<double, 3> PointType;
+typedef itk::Image< VectorType, 3 > DisplacementFieldType;
 
 const unsigned int spline_order = 3;
 typedef itk::BSplineTransform<double, 3, spline_order> TransformTypeBSpline;
 typedef itk::AffineTransform<double, 3> TransformTypeAffine;
-
+typedef itk::DisplacementFieldTransform<double, 3> TransformTypeDis;
 
 const int k = 20;
 
@@ -109,6 +115,7 @@ public:
 
 	double last_metric_val;
 	int counter;
+	deque<double> deq;
 
 protected:
 	CommandIterationUpdate() { 
@@ -128,18 +135,39 @@ public:
 		if (!itk::IterationEvent().CheckEvent(&event)) {
 			return;
 		}
+		//
+		//double diff = optimizer->GetGradient().two_norm();
+		//if (diff < 0.03) {
+		//	++counter;
+		//	if (counter > 10) {
+		//		optimizer->StopOptimization();
+		//	}
+		//} else {
+		//	counter = 0;
+		//}
 		
-		double diff = abs(last_metric_val - optimizer->GetValue());
+		double diff = last_metric_val - optimizer->GetValue();
+		deq.push_front(diff);
+		if (deq.size() > 10) deq.pop_back();
+
+		double avg = 0;
+		for (auto it = deq.begin(); it != deq.end(); ++it) {
+			avg += *it;
+		}
+		avg /= deq.size();
+
+		cout << "avg: " << avg << endl;
 		last_metric_val = optimizer->GetValue();
-		if (diff < 1e-5) {
+
+		if (avg < 5e-5 && optimizer->GetCurrentIteration() > 25) {
 			++counter;
-			if (counter > 20) {
+			//cout << "count: " << counter << endl;
+			if (counter > 10) {
 				optimizer->StopOptimization();
 			}
 		} else {
 			counter = 0;
 		}
-
 
 		//cout << "diff: " << diff << endl;
 
@@ -152,7 +180,8 @@ public:
 		}
 		std::cout << "Iteration: " << optimizer->GetCurrentIteration() << "\t";
 		std::cout << "Metric Value: " << optimizer->GetValue() << "\t";
-		std::cout << "Step Length: " << optimizer->GetCurrentStepLength() << endl;
+		std::cout << "Step Length: " << optimizer->GetCurrentStepLength() << "\t";
+		cout << "Gradient: " << optimizer->GetGradient().one_norm() << endl;
 	}
 };
 
@@ -186,16 +215,18 @@ public:
 		}
 
 		double diff = abs(last_metric_val - optimizer->GetValue());
+		//cout << "diff: " << diff << endl;
 		last_metric_val = optimizer->GetValue();
-		if (diff < 1e-5) {
-			++counter;
-			if (counter > 20) {
-				optimizer->SetMaximumNumberOfIterations(50);
-				optimizer->SetMaximumNumberOfEvaluations(50);
+		if (diff < 0.0003) {
+			++counter;			
+			//cout << "count: " << counter << endl;
+			if (counter > 10) {
+				optimizer->SetMaximumNumberOfIterations(0);
+				optimizer->SetMaximumNumberOfEvaluations(0);
 			}
 		} else {
 			counter = 0;
-		}
+		}		
 	}
 
 	void Execute(const itk::Object * object, const itk::EventObject & event) {
@@ -206,6 +237,7 @@ public:
 		}
 		std::cout << "Iteration: " << optimizer->GetCurrentIteration() << "\t";
 		std::cout << "Metric Value: " << optimizer->GetValue() << endl;		
+		
 		//std::cout << optimizer->GetCurrentPosition() << std::endl;
 
 	}
@@ -223,7 +255,7 @@ void changeBasis(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_i
 void initTrans(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image);
 void getBrain(ImageType::Pointer & image, ImageType::Pointer & out_image, int n_bins = 100);
 void getLabelImage(ImageType::Pointer & image, ImageType::Pointer & out_image, int n_classes);
-
+void getInverseTfm(const ImageType::Pointer & fixed_image, const TransformTypeBSpline::Pointer & tfm, TransformTypeDis::Pointer & itfm);
 
 int main(int argc, char *argv[])
 {
@@ -276,12 +308,14 @@ int main(int argc, char *argv[])
 
 	itk::TimeProbe clock;
 	clock.Start();
+	//bool bspline = false;
 	if (strcmp(argv[5],"bspline") == 0) {	
 		SmoothAndNormalize(fixed_image, fixed_image);
 		SmoothAndNormalize(moving_image, moving_image);
 		RegisterImages_MIBSpline(fixed_image, moving_image, finalTransformBSpline);
 		resample->SetTransform(finalTransformBSpline);
-	} else if (strcmp(argv[5], "bspline2") == 0) {
+		//bspline = true;		
+	} else if (strcmp(argv[5], "bspline2") == 0) { // DONT USE, TESTING ONLY
 		RegisterImages_MSBSpline(fixed_image, moving_image, finalTransformBSpline);
 		resample->SetTransform(finalTransformBSpline);
 	} else if (strcmp(argv[5], "affine") == 0) {
@@ -290,7 +324,7 @@ int main(int argc, char *argv[])
 		SmoothAndNormalize(moving_image, moving_image);
 		RegisterImages_MIAffine(fixed_image, moving_image, finalTransformAffine);
 		resample->SetTransform(finalTransformAffine);
-	} else if (strcmp(argv[5], "affine2") == 0) {
+	} else if (strcmp(argv[5], "affine2") == 0) { // DONT USE, TESTING ONLY
 		SmoothAndNormalize(fixed_image, fixed_image);
 		SmoothAndNormalize(moving_image, moving_image);
 		RegisterImages_MIAffine(fixed_image, moving_image, finalTransformAffine);
@@ -313,16 +347,19 @@ int main(int argc, char *argv[])
 	WriterType::Pointer writer = WriterType::New();
 	writer->SetFileName(argv[3]);
 	writer->SetInput(resample->GetOutput());
+
+
+	itk::TransformFileWriter::Pointer t_writer = itk::TransformFileWriter::New();
+
 	try {
 		writer->Update();
 	} catch (itk::ExceptionObject & err) {
-	std::cout << "ExceptionObject caught !" << std::endl;
-	std::cout << err << std::endl;
-	exit(EXIT_FAILURE);
-}
+		std::cout << "ExceptionObject caught !" << std::endl;
+		std::cout << err << std::endl;
+		exit(EXIT_FAILURE);
+	}
 
-	try {
-		itk::TransformFileWriter::Pointer t_writer = itk::TransformFileWriter::New();
+	try {		
 		t_writer->SetFileName(argv[4]);
 		t_writer->SetInput(resample->GetTransform());
 		t_writer->Update();
@@ -411,8 +448,8 @@ void RegisterImages_MSAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 
 	// OPTIMIZER PARAMETERS BEGIN
 	optimizer->SetMaximumStepLength(1.0);
-	optimizer->SetMinimumStepLength(0.001);
-	optimizer->SetNumberOfIterations(300);
+	optimizer->SetMinimumStepLength(0.01);
+	optimizer->SetNumberOfIterations(25);
 
 	//optimizer->MaximizeOn();
 	optimizer->MinimizeOn();
@@ -516,7 +553,7 @@ void RegisterImages_MSAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 	std::cout << " Iterations    = " << numberOfIterations << std::endl;
 	std::cout << " Metric value  = " << bestValue << std::endl;
 	std::cout << " Numb. Samples = " << metric->GetNumberOfSpatialSamples() << std::endl;
-
+	cout << endl;
 
 	out_transform = TransformTypeAffine::New();
 	out_transform->SetParameters(finalParameters);
@@ -556,8 +593,9 @@ void RegisterImages_MIAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 
 	// OPTIMIZER PARAMETERS BEGIN
 	optimizer->SetMaximumStepLength(0.1);
-	optimizer->SetMinimumStepLength(0.0001);
+	optimizer->SetMinimumStepLength(0.001);
 	optimizer->SetNumberOfIterations(300);
+	//optimizer->SetGradientMagnitudeTolerance(1.0);
 
 	//optimizer->MaximizeOn();
 	optimizer->MinimizeOn();
@@ -585,7 +623,7 @@ void RegisterImages_MIAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 	// METRIC PARAMETERS BEGIN
 	metric->SetNumberOfHistogramBins(50);
 	const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
-	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.2);
+	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.3);
 	metric->SetNumberOfSpatialSamples(numberOfSamples);
 	// METRIC PARAMETERS END
 
@@ -638,7 +676,7 @@ void RegisterImages_MIAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 	std::cout << " Iterations    = " << numberOfIterations << std::endl;
 	std::cout << " Metric value  = " << bestValue << std::endl;
 	std::cout << " Numb. Samples = " << metric->GetNumberOfSpatialSamples() << std::endl;
-
+	cout << endl;
 
 	out_transform = TransformTypeAffine::New();
 	out_transform->SetParameters(finalParameters);
@@ -835,7 +873,7 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 	// METRIC PARAMETERS BEGIN
 	metric->SetNumberOfHistogramBins(50);
 	const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
-	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.2);
+	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.3);
 	metric->SetNumberOfSpatialSamples(numberOfSamples);
 	// METRIC PARAMETERS END
 
@@ -854,10 +892,10 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 	optimizer->SetLowerBound(lowerBound);
 
 	optimizer->SetCostFunctionConvergenceFactor(1.e7);
-	optimizer->SetProjectedGradientTolerance(1e-5);
+	optimizer->SetProjectedGradientTolerance(5e-6);
 	optimizer->SetMaximumNumberOfIterations(500);
 	optimizer->SetMaximumNumberOfEvaluations(500);
-	optimizer->SetMaximumNumberOfCorrections(10);
+	optimizer->SetMaximumNumberOfCorrections(100);
 
 	//optimizer->TraceOn();
 	//optimizer->MaximizeOn();
@@ -879,7 +917,7 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 	registration->SetFixedImage(fixed_image);
 	registration->SetMovingImage(moving_image);
 	registration->SetFixedImageRegion(fixed_image->GetBufferedRegion());
-	registration->SetNumberOfThreads(1);
+	registration->SetNumberOfThreads(2);
 
 
 	try {
@@ -1304,3 +1342,58 @@ void getLabelImage(ImageType::Pointer & image, ImageType::Pointer & out_image, i
 
 }
 
+void getInverseTfm(const ImageType::Pointer & fixed_image, const TransformTypeBSpline::Pointer & tfm, TransformTypeDis::Pointer & itfm) {
+	itk::TimeProbe clock;
+	clock.Start();
+	// inverse transform
+
+	cout << "Calculating displacement field..." << endl;
+	DisplacementFieldType::Pointer field = DisplacementFieldType::New();
+	field->SetRegions(fixed_image->GetBufferedRegion());
+	field->SetOrigin(fixed_image->GetOrigin());
+	field->SetSpacing(fixed_image->GetSpacing());
+	field->SetDirection(fixed_image->GetDirection());
+	field->Allocate();
+
+	typedef itk::ImageRegionIterator< DisplacementFieldType > FieldIterator;
+	FieldIterator fi(field, fixed_image->GetBufferedRegion());
+
+	fi.GoToBegin();
+
+	TransformTypeBSpline::InputPointType fixedPoint;
+	TransformTypeBSpline::OutputPointType movingPoint;
+	DisplacementFieldType::IndexType index;
+
+	VectorType displacement;
+
+	while (!fi.IsAtEnd()) {
+		index = fi.GetIndex();
+		field->TransformIndexToPhysicalPoint(index, fixedPoint);
+		movingPoint = tfm->TransformPoint(fixedPoint);
+		displacement = movingPoint - fixedPoint;
+		fi.Set(displacement);
+		++fi;
+	}
+
+	cout << "Displacement field calculated!" << endl;
+	cout << "Calculating inverse displacement field..." << endl;
+
+	typedef IterativeInverseDisplacementFieldImageFilter<DisplacementFieldType, DisplacementFieldType> IDFImageFilter;
+	IDFImageFilter::Pointer IDF_filter = IDFImageFilter::New();
+	IDF_filter->SetInput(field);
+	IDF_filter->SetStopValue(1);
+	IDF_filter->SetNumberOfIterations(100);
+
+	try {
+		IDF_filter->Update();
+	} catch (ExceptionObject & err) {
+		cerr << err << endl;
+		exit(EXIT_FAILURE);
+	}
+	clock.Stop();
+
+	cout << "Inverse displacement field calculated!" << endl;
+	std::cout << "Time Taken: " << clock.GetTotal() << "s" << std::endl;
+
+	itfm->SetDisplacementField(IDF_filter->GetOutput());
+}

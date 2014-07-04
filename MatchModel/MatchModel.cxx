@@ -17,6 +17,7 @@
 #include "itkScalarImageKmeansImageFilter.h"
 #include "itkMinimumMaximumImageCalculator.h"
 #include "itkImagePCADecompositionCalculator.h"
+#include "itkCSVArray2DFileReader.h"
 
 #include <fstream>
 #include <iostream>
@@ -73,8 +74,8 @@ int main(int argc, char *argv[]) {
 
 	if (argc < 5) {
 		cout << "Please specify:" << endl;
-		cout << " Input Image" << endl;
-		cout << " Input transform" << endl;
+		cout << " CSV File" << endl;
+		cout << " Input folder" << endl;
 		cout << " Input PCA folder" << endl;
 		cout << " Output name" << endl;
 		return EXIT_FAILURE;
@@ -83,41 +84,42 @@ int main(int argc, char *argv[]) {
 	DuplicatorTypePCA::Pointer duplicator_pca = DuplicatorTypePCA::New();
 
 
-	// READ IMAGE
-	ReaderType::Pointer reader = ReaderType::New();
-	reader->SetFileName(argv[1]);
+	typedef itk::CSVArray2DFileReader<double> ReaderTypeCSV;
+	ReaderTypeCSV::Pointer csv_reader = ReaderTypeCSV::New();
 
-	ImageType::Pointer input_image = ImageType::New();
+	csv_reader->SetFileName(argv[1]);
+	csv_reader->SetFieldDelimiterCharacter(';');
+	csv_reader->SetStringDelimiterCharacter('"');
+	csv_reader->HasColumnHeadersOn();
+	csv_reader->HasRowHeadersOn();
+	csv_reader->UseStringDelimiterCharacterOn();
+
 	try {
-		reader->Update();
-	} catch (ExceptionObject & e) {
+		csv_reader->Parse();
+	} catch (itk::ExceptionObject & e) {
 		cerr << e << endl;
-		cerr << "Cant read input image" << endl;
 		return EXIT_FAILURE;
 	}
-	input_image = reader->GetOutput();
-	duplicator->SetInputImage(input_image);
-	duplicator->Update();
-	ImageType::Pointer input_image_copy = ImageType::New();
-	input_image_copy = duplicator->GetOutput();
 
-	// READ TFM
-	itk::TransformFileReader::Pointer tfm_reader = itk::TransformFileReader::New();
-	tfm_reader->SetFileName(argv[2]);
+	ReaderTypeCSV::Array2DDataObjectPointer data = csv_reader->GetOutput();
 
-	try {
-		tfm_reader->Update();
-	} catch (ExceptionObject & e) {
-		cerr << e << endl;
-		cerr << "Cant read input transform" << endl;
-		return EXIT_FAILURE;
-	}	
+	vector<string> prop_names;
+	vector<vector<double>> prop_vals;
+	string fn_prefix = "BRCAD";
+	string fn_img_suffix = ".nii";
+	string fn_tfm_suffix = ".tfm";
 
-	TransformTypeBSpline::Pointer tfm = static_cast<TransformTypeBSpline*>(tfm_reader->GetTransformList()->back().GetPointer());
-	TransformTypeDis::Pointer itfm = TransformTypeDis::New();
-	getInverseTfm(input_image_copy, tfm, itfm);
+	for (int i = 0; i < data->GetColumnHeaders().size(); ++i) {
+		prop_names.push_back(data->GetColumnHeaders()[i]);
+		//cout << prop_names[i] << endl;
+	}
 
+	vector<string> img_names;
+	for (int i = 0; i < data->GetRowHeaders().size(); ++i) {
+		img_names.push_back(data->GetRowHeaders()[i]);
+	}
 
+	string input_img_dir(argv[2]);
 	string input_pca_path(argv[3]);
 	string output_name(argv[4]);
 
@@ -160,6 +162,7 @@ int main(int argc, char *argv[]) {
 	cout << n_common << endl;
 
 	// READ PCs
+
 	ReaderTypePCA::Pointer pc_reader = ReaderTypePCA::New();
 
 	int counter = 1;
@@ -181,124 +184,174 @@ int main(int argc, char *argv[]) {
 		++counter;
 	}
 
-
-	// Create input image	
-	ImageTypePCA::Pointer input_PCA_image = ImageTypePCA::New();
-	ImageTypePCA::RegionType region;
-	itk::Size<2> sz;
-	sz[0] = 3;
-	sz[1] = n_common;
-	region.SetSize(sz);
-
-	input_PCA_image->SetRegions(region);
-	input_PCA_image->Allocate();
-
-	itk::ImageRegionIteratorWithIndex<ImageTypeUC> common_itr(common_map, common_map->GetBufferedRegion());
-	itk::ImageRegionIteratorWithIndex<ImageTypePCA> pcaimg_itr(input_PCA_image, input_PCA_image->GetBufferedRegion());
-
-	double common_val;
-	ImageTypeUC::IndexType common_idx;
-	Point<double, 3> img_point;
-	while (!common_itr.IsAtEnd()) {
-		common_val = common_itr.Get();
-		if (common_val > 0.5) {
-			common_idx = common_itr.GetIndex();
-			common_map->TransformIndexToPhysicalPoint(common_idx, img_point);
-			img_point = itfm->TransformPoint(img_point);
-			pcaimg_itr.Set(img_point[0]);
-			++pcaimg_itr;
-			pcaimg_itr.Set(img_point[1]);
-			++pcaimg_itr;
-			pcaimg_itr.Set(img_point[2]);
-			++pcaimg_itr;
-		}
-		++common_itr;
-	}
-
-
-	// PLUG IT ALL IN
-	projector->SetImage(input_PCA_image);
-	projector->SetMeanImage(mean_image);
-	projector->SetBasisImages(basis_image_vector);
-
-	projector->Compute();
-
-	ProjectorType::BasisVectorType projection = projector->GetProjection();
-	//cout << projection.size() << endl;
-
-	// PROPERTIES
-	
-
-	Eigen::Matrix<double, Eigen::Dynamic, 1> p;
-	p.resize(projection.size(), 1);
-	for (int i = 0; i < projection.size(); ++i) {
-		p(i, 0) = projection[i];
-	}
-
-	Eigen::Matrix<double, 1, Eigen::Dynamic> w;
-	w.resize(1, projection.size());
-
-	Eigen::Matrix<double, 1, 1> r;
-
 	ofstream myfile;
+	myfile.precision(25);
 	myfile.open(output_name, ios::trunc);
+	for (int i = 0; i < img_names.size(); ++i) {
 
-	vector<double> temp_prop;
-	string temp;
-	string line;
-	ifstream infile(input_pca_path + "/properties.txt");
-	if (infile.is_open()) {
-		while (getline(infile, line)) {
-			istringstream ss(line);
 
-			if (!getline(ss, temp, ' ')) continue;
+		// READ IMAGE
+		string img_name = fn_prefix + img_names[i] + fn_img_suffix;
+		string img_path = input_img_dir + "/images/" + img_name;
 
-			cout << temp << ": ";
-			myfile << temp << " ";
+		cout << "Processing Image " << img_name << "- " << i + 1 << "/" << img_names.size() << endl;
+		myfile << img_name << endl;
 
-			temp_prop.clear();
-			while (ss) {
-				if (!getline(ss, temp, ' ')) break;
-				temp_prop.push_back(atof(temp.c_str()));
-			}
+		ReaderType::Pointer reader = ReaderType::New();
+		reader->SetFileName(img_path);
 
-			if (temp_prop.size() != projection.size()) {
-				cerr << "ERROR: projection size does not match properties size: " << temp_prop.size() << " " << projection.size() << endl;
-				return EXIT_FAILURE;
-			}
-
-			for (int i = 0; i < temp_prop.size(); ++i) {
-				w(0, i) = temp_prop[i];
-			}
-
-			//cout << endl;
-			//cout << "w: " << endl << w << endl;
-			//cout << "p: " << endl << p << endl;
-			r = w*p;
-
-			cout << r << endl;
-			myfile << r << endl;			
-
+		ImageType::Pointer input_image = ImageType::New();
+		try {
+			reader->Update();
+		} catch (ExceptionObject & e) {
+			cerr << e << endl;
+			cerr << "Cant read input image" << endl;
+			return EXIT_FAILURE;
 		}
-		infile.close();
-	}
+		input_image = reader->GetOutput();
+		duplicator->SetInputImage(input_image);
+		duplicator->Update();
+		ImageType::Pointer input_image_copy = ImageType::New();
+		input_image_copy = duplicator->GetOutput();
 
-	//if (temp_prop.size() != sz) {
-	//	cerr << "bad input file? expected " << sz << " properties" << endl;
-	//	exit(EXIT_FAILURE);
-	//}
+		// READ TFM
+		string tfm_name = fn_prefix + img_names[i] + fn_tfm_suffix;
+		string tfm_path = input_img_dir + "/transforms/" + tfm_name;
 
-	//for (int i = 0; i < temp_prop.size(); ++i) {
-	//	b(i) = temp_prop[i];
-	//}
+		itk::TransformFileReader::Pointer tfm_reader = itk::TransformFileReader::New();
+		tfm_reader->SetFileName(tfm_path);
+
+		try {
+			tfm_reader->Update();
+		} catch (ExceptionObject & e) {
+			cerr << e << endl;
+			cerr << "Cant read input transform" << endl;
+			return EXIT_FAILURE;
+		}
+
+		TransformTypeBSpline::Pointer tfm = static_cast<TransformTypeBSpline*>(tfm_reader->GetTransformList()->back().GetPointer());
+		TransformTypeDis::Pointer itfm = TransformTypeDis::New();
+		getInverseTfm(input_image_copy, tfm, itfm);
+
+		// Create input image	
+		ImageTypePCA::Pointer input_PCA_image = ImageTypePCA::New();
+		ImageTypePCA::RegionType region;
+		itk::Size<2> sz;
+		sz[0] = 3;
+		sz[1] = n_common;
+		region.SetSize(sz);
+
+		input_PCA_image->SetRegions(region);
+		input_PCA_image->Allocate();
+
+		itk::ImageRegionIteratorWithIndex<ImageTypeUC> common_itr(common_map, common_map->GetBufferedRegion());
+		itk::ImageRegionIteratorWithIndex<ImageTypePCA> pcaimg_itr(input_PCA_image, input_PCA_image->GetBufferedRegion());
+
+		double common_val;
+		ImageTypeUC::IndexType common_idx;
+		Point<double, 3> img_point;
+		while (!common_itr.IsAtEnd()) {
+			common_val = common_itr.Get();
+			if (common_val > 0.5) {
+				common_idx = common_itr.GetIndex();
+				common_map->TransformIndexToPhysicalPoint(common_idx, img_point);
+				img_point = itfm->TransformPoint(img_point);
+				pcaimg_itr.Set(img_point[0]);
+				++pcaimg_itr;
+				pcaimg_itr.Set(img_point[1]);
+				++pcaimg_itr;
+				pcaimg_itr.Set(img_point[2]);
+				++pcaimg_itr;
+			}
+			++common_itr;
+		}
 
 
-	myfile << "projection ";
-	for (int i = 0; i < projection.size(); ++i) {
-		myfile << projection[i] << " ";
+		// PLUG IT ALL IN
+		projector->SetImage(input_PCA_image);
+		projector->SetMeanImage(mean_image);
+		projector->SetBasisImages(basis_image_vector);
+
+		projector->Compute();
+
+		ProjectorType::BasisVectorType projection = projector->GetProjection();
+		//cout << projection.size() << endl;
+
+		// PROPERTIES
+
+
+		Eigen::Matrix<double, Eigen::Dynamic, 1> p;
+		p.resize(projection.size(), 1);
+		for (int i = 0; i < projection.size(); ++i) {
+			p(i, 0) = projection[i];
+		}
+
+		Eigen::Matrix<double, 1, Eigen::Dynamic> w;
+		w.resize(1, projection.size());
+
+		Eigen::Matrix<double, 1, 1> r;
+
+		
+
+		vector<double> temp_prop;
+		string temp;
+		string line;
+		ifstream infile(input_pca_path + "/properties.txt");
+		if (infile.is_open()) {
+			while (getline(infile, line)) {
+				istringstream ss(line);
+
+				if (!getline(ss, temp, ' ')) continue;
+
+				cout << temp << ": ";
+				myfile << temp << " ";
+
+				temp_prop.clear();
+				while (ss) {
+					if (!getline(ss, temp, ' ')) break;
+					temp_prop.push_back(atof(temp.c_str()));
+				}
+
+				if (temp_prop.size() != projection.size()) {
+					cerr << "ERROR: projection size does not match properties size: " << temp_prop.size() << " " << projection.size() << endl;
+					return EXIT_FAILURE;
+				}
+
+				for (int i = 0; i < temp_prop.size(); ++i) {
+					w(0, i) = temp_prop[i];
+				}
+
+				//cout << endl;
+				//cout << "w: " << endl << w << endl;
+				//cout << "p: " << endl << p << endl;
+				r = w*p;
+
+				cout << r << endl;
+				myfile << r << endl;
+
+			}
+			infile.close();
+		}
+
+		//if (temp_prop.size() != sz) {
+		//	cerr << "bad input file? expected " << sz << " properties" << endl;
+		//	exit(EXIT_FAILURE);
+		//}
+
+		//for (int i = 0; i < temp_prop.size(); ++i) {
+		//	b(i) = temp_prop[i];
+		//}
+
+
+		myfile << "projection ";
+		for (int i = 0; i < projection.size(); ++i) {
+			myfile << projection[i] << " ";
+		}
+		myfile << endl << endl;
+		
+
 	}
 	myfile.close();
-
 	return EXIT_SUCCESS;
 	// ________________________________
 

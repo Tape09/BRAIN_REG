@@ -70,14 +70,17 @@ void getBrain(ImageType::Pointer & image, Image<unsigned char, 3>::Pointer & out
 
 int main(int argc, char *argv[]) {
 
+	//cout.precision(15);
+
+
 	itk::TimeProbe totalTimeClock;
 	totalTimeClock.Start();
 
 	if (argc < 4) {
 		cout << "Please specify:" << endl;
 		cout << " Properties File" << endl;
-		cout << " Output Directory" << endl;
 		cout << " Input Directory/Directories" << endl;
+		cout << " Output Directory" << endl;		
 		return EXIT_FAILURE;
 	} 
 
@@ -95,7 +98,7 @@ int main(int argc, char *argv[]) {
 	ReaderTypeCSV::Pointer csv_reader = ReaderTypeCSV::New();
 
 	csv_reader->SetFileName(argv[1]);
-	csv_reader->SetFieldDelimiterCharacter(',');
+	csv_reader->SetFieldDelimiterCharacter(';');
 	csv_reader->SetStringDelimiterCharacter('"');
 	csv_reader->HasColumnHeadersOn();
 	csv_reader->HasRowHeadersOn();
@@ -112,17 +115,72 @@ int main(int argc, char *argv[]) {
 
 	vector<string> prop_names;
 	vector<vector<double>> prop_vals;
+	string fn_prefix = "BRCAD";
+	string fn_img_suffix = ".nii";
+	string fn_tfm_suffix = ".tfm";
+
+	for (int i = 0; i < data->GetColumnHeaders().size(); ++i) {		
+		prop_names.push_back(data->GetColumnHeaders()[i]);
+		//cout << prop_names[i] << endl;
+	}
+
+	//Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> q;
+	//q.resize(3, 3);
+
+	//Eigen::Matrix<double, Eigen::Dynamic, 1> e;
+	//e.resize(3, 1);
+
+	//Eigen::Matrix<double, Eigen::Dynamic, 1> w;
+	//w.resize(3, 1);
+
+	//q = 10*Eigen::Matrix<double, 3, 3>::Random();
+	//e = 10*Eigen::Matrix<double, 3, 1>::Random();
+
+	//for (int x = 0; x < 3; ++x) {
+	//	for (int y = 0; y < 3; ++y) {
+	//		q(x, y) = floor(q(x, y));
+	//	}
+	//	e(x, 0) = floor(q(x, 1));
+	//}
+
+	//w = q.colPivHouseholderQr().solve(e);
+
+	//cout << "q=" << endl << q << endl;
+	//cout << "w=" << endl << w << endl;
+	//cout << "e=" << endl << e << endl;
 
 	//
 
-	string output_dir_path(argv[2]);
+	//cout << "qw=" << endl << q*w << endl;
 
-	vector<string> input_dir_paths;
-	for (int i = 3; i < argc; ++i) {
-		input_dir_paths.push_back(argv[i]);
+	
+	
+	//return 0;
+
+	vector<string> img_names;
+
+	for (int i = 0; i < data->GetRowHeaders().size(); ++i) {
+		img_names.push_back(data->GetRowHeaders()[i]);
 	}
+	
+	//for (int n = 0; n < prop_names.size(); ++n) {
+	//	for (int j = 0; j < img_names.size(); ++j) {
+	//		cout << data->GetData(img_names[j], prop_names[n]) << endl;
 
-	vector<ImageType::Pointer> images;
+	//	}
+	//}
+
+	//return 0;
+	//
+
+	string output_dir_path(argv[3]);
+
+	string input_dir_path(argv[2]);
+	string input_img_dir_path(input_dir_path + "/images");
+	string input_tfm_dir_path(input_dir_path + "/transforms");
+
+	
+	//vector<ImageType::Pointer> images;
 	vector<TransformTypeDis::Pointer> inv_tfms;
 	
 
@@ -146,81 +204,61 @@ int main(int argc, char *argv[]) {
 	WriterType::Pointer img_writer = WriterType::New();
 	DuplicatorType::Pointer duplicator = DuplicatorType::New();
 
-	for (int d = 0; d < input_dir_paths.size(); ++d) {
-		cout << "Processing directory " << input_dir_paths[d] << "- " << d + 1 << "/" << input_dir_paths.size() << endl;
-		
-
-		// DIRECTORY STUFF
-		string input_img_dir_path(input_dir_paths[d] + "/images");
-		string input_tfm_dir_path(input_dir_paths[d] + "/transforms");
-
-		try {
-			input_img_dir->Load(input_img_dir_path.c_str());
-			input_tfm_dir->Load(input_tfm_dir_path.c_str());
-		} catch (ExceptionObject & err) {
-			cerr << err << endl;
-			return EXIT_FAILURE;
-		}
-
-		if (input_img_dir->GetNumberOfFiles() == 0) {
-			cerr << "Input Directory Invalid" << endl;
-			return EXIT_FAILURE;
-		}
-
-		if (input_tfm_dir->GetNumberOfFiles() == 0) {
-			cerr << "Input Directory Invalid" << endl;
-			return EXIT_FAILURE;
-		}
-		// 
-
+	int n_common;
+	bool gotBrain = false;
+	ImageTypeUC::Pointer common_map = ImageTypeUC::New();
+	for (int i = 0; i < img_names.size(); ++i) {
 		string img_path;
 		string tfm_path;
 		string img_name;
 		string tfm_name;
 		string output_img_path;
 		string output_tfm_path;
-		Directory::Pointer test_file = Directory::New();
-		for (int i = 2; i < input_img_dir->GetNumberOfFiles(); ++i) {
 
-			img_name = input_img_dir->GetFile(i);
-			cout << "Processing Image " << img_name << "- " << i - 1 << "/" << input_img_dir->GetNumberOfFiles() - 2 << endl;
+		img_name = fn_prefix + img_names[i] + fn_img_suffix;
+		img_path = input_img_dir_path + "/" + img_name;
+		cout << "Processing Image " << img_name << "- " << i + 1 << "/" << img_names.size() << endl;
+		
 
-			img_path = input_img_dir_path + "/" + img_name;
-			test_file->Load(img_path.c_str());
-			
+		tfm_name = fn_prefix + img_names[i] + fn_tfm_suffix;
+		tfm_path = input_tfm_dir_path + "/" + tfm_name;
 
-			if (test_file->GetNumberOfFiles() > 0) continue;
+		try {
+			img_reader->SetFileName(img_path);
+			img_reader->Update();
 
-			int pos;
-			pos = img_name.find_first_of(".");
-			tfm_name = img_name.substr(0, pos) + ".tfm";
-			tfm_path = input_tfm_dir_path + "/" + tfm_name;
-			
+			ImageType::Pointer temp_img = img_reader->GetOutput();
 
-			try {
-				img_reader->SetFileName(img_path);
-				img_reader->Update();
-				duplicator->SetInputImage(img_reader->GetOutput());
-				duplicator->Update();
-				images.push_back(duplicator->GetOutput());
+			if (!gotBrain) {
+				getBrain(temp_img, common_map);
+				gotBrain = true;
+			} else {
+				n_common = getCommonPix(temp_img, common_map);
+			}
 
-				tfm_reader->SetFileName(tfm_path);
-				tfm_reader->Update();
+			//duplicator->SetInputImage(img_reader->GetOutput());
+			//duplicator->Update();
+			//images.push_back(duplicator->GetOutput());
 
-				TransformTypeBSpline::Pointer tfm = static_cast<TransformTypeBSpline*>(tfm_reader->GetTransformList()->back().GetPointer());
-				TransformTypeDis::Pointer itfm = TransformTypeDis::New();
-				
-				getInverseTfm(images.back(), tfm, itfm);
 
-				inv_tfms.push_back(itfm);
-			} catch (ExceptionObject & err) {
-				cerr << err << endl;
-				return EXIT_FAILURE;
-			}			
+
+			tfm_reader->SetFileName(tfm_path);
+			tfm_reader->Update();
+
+			TransformTypeBSpline::Pointer tfm = static_cast<TransformTypeBSpline*>(tfm_reader->GetTransformList()->back().GetPointer());
+			TransformTypeDis::Pointer itfm = TransformTypeDis::New();
+
+			getInverseTfm(temp_img, tfm, itfm);
+
+			inv_tfms.push_back(itfm);
+		} catch (ExceptionObject & err) {
+			cerr << err << endl;
+			return EXIT_FAILURE;
 		}
 	}
 
-	if (images.size() < 2) {
+
+	if (inv_tfms.size() < 2) {
 		cerr << "NOT ENOUGH IMAGES" << endl;
 		return EXIT_FAILURE;
 	}
@@ -228,21 +266,21 @@ int main(int argc, char *argv[]) {
 	//duplicator->SetInputImage(images[0]);
 	//duplicator->Update();
 
-	ImageTypeUC::Pointer common_map = ImageTypeUC::New();
+	
 
 	//getLabelImage(images[0],common_map,k);
-	getBrain(images[0], common_map);
+	
 
 	//ImageType::Pointer common_map = ImageType::New();
 	//common_map = duplicator->GetOutput();	
 	
-	cout << "Calculating common pixels..." << endl;
+	//cout << "Calculating common pixels..." << endl;
 
-	int n_common;
-	for (int i = 1; i < images.size(); ++i) {
-		n_common = getCommonPix(images[i], common_map);
-		cout << "n common pixels: " << n_common << endl;
-	}
+	//int n_common;
+	//for (int i = 1; i < images.size(); ++i) {
+	//	n_common = getCommonPix(images[i], common_map);
+	//	cout << "n common pixels: " << n_common << endl;
+	//}
 
 	WriterTypeUC::Pointer mask_writer = WriterTypeUC::New();
 	string mask_fn = output_dir_path + "/" + "common_mask.nii";
@@ -250,43 +288,44 @@ int main(int argc, char *argv[]) {
 	mask_writer->SetInput(common_map);
 	mask_writer->Update();
 
-
-	vector<ImageTypePCA::Pointer> images_PCA(images.size());
+	//cout << "asfd" << endl;
+	vector<ImageTypePCA::Pointer> images_PCA(inv_tfms.size());
 	ImageTypePCA::RegionType region;
 	itk::Size<2> sz;
 	sz[0] = 3;
 	sz[1] = n_common;
 	region.SetSize(sz);
 
-	for (int i = 0; i < images.size(); ++i) {
+	for (int i = 0; i < inv_tfms.size(); ++i) {
 		images_PCA[i] = ImageTypePCA::New();
 		images_PCA[i]->SetRegions(region);
 		images_PCA[i]->Allocate();
 
-		itk::ImageRegionIteratorWithIndex<ImageType> img_itr(images[i], images[i]->GetBufferedRegion());
+		//itk::ImageRegionIteratorWithIndex<ImageType> img_itr(images[i], images[i]->GetBufferedRegion());
 		itk::ImageRegionIteratorWithIndex<ImageTypeUC> common_itr(common_map, common_map->GetBufferedRegion());
 		itk::ImageRegionIteratorWithIndex<ImageTypePCA> pcaimg_itr(images_PCA[i], images_PCA[i]->GetBufferedRegion());
 
-		double common_val;
+		unsigned int common_val;
 		ImageType::IndexType img_idx;
 		Point<double, 3> img_point;
-		while (!img_itr.IsAtEnd()) {
+		while (!common_itr.IsAtEnd()) {
 			common_val = common_itr.Get();			
-			if (common_val > 0) {
-				img_idx = img_itr.GetIndex();
-				images[i]->TransformIndexToPhysicalPoint(img_idx, img_point);
+			if (common_val > 0.5) {
+				img_idx = common_itr.GetIndex();
+				common_map->TransformIndexToPhysicalPoint(img_idx, img_point);
 				img_point = inv_tfms[i]->TransformPoint(img_point);
 				pcaimg_itr.Set(img_point[0]);
 				++pcaimg_itr;
 				pcaimg_itr.Set(img_point[1]);
 				++pcaimg_itr;
 				pcaimg_itr.Set(img_point[2]);
-				++pcaimg_itr;
+				++pcaimg_itr;				
 			}
-			++img_itr;
 			++common_itr;
 		}
 	}
+
+	inv_tfms.clear();
 
 	n_pcomponents = uint(images_PCA.size());
 
@@ -304,10 +343,9 @@ int main(int argc, char *argv[]) {
 	cout << "Preforming PCA analysis with " << n_pcomponents << " components..." << endl;
 	estimator->Update();
 	clock.Stop();
-	cout << "Done!" << endl;
 	cout << "Time taken: " << clock.GetTotal() << "s" << endl;
 
-	
+	cout << "Printing..." << endl;
 	string fn;
 	fn = output_dir_path + "/mean.mhd";
 	WriterTypePCA::Pointer pca_writer = WriterTypePCA::New();
@@ -334,6 +372,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	// PROPERTIES
+	cout << "Calculating x..." << endl;
 
 	// set up projector
 	ProjectorType::Pointer projector = ProjectorType::New();
@@ -357,25 +396,33 @@ int main(int argc, char *argv[]) {
 		projector->Compute();
 		projection = projector->GetProjection();
 		//cout << projection.size() << endl;
+		//cout << projection << endl;
 		for (int i = 0; i < projection.size(); ++i) {
 			A(img_idx, i) = projection[i];
 		}
 
 	}
 
+	images_PCA.clear();
+
 	ofstream outfile;
+	outfile.precision(25);
 	outfile.open(output_dir_path + "/properties.txt");
 	for (int n = 0; n < prop_names.size(); ++n) {
 		outfile << prop_names[n] << " ";
 		
-		for (int j = 0; j < prop_vals[n].size(); ++j) {
-			b(j, 1) = prop_vals[n][j];
+		for (int j = 0; j < img_names.size(); ++j) {
+			//cout << data->GetData(img_names[j], prop_names[n]) << endl;
+			b(j, 0) = data->GetData(img_names[j],prop_names[n]);
 		}		
 
-		x = A.colPivHouseholderQr().solve(b);
+		//x = A.inverse() * b;
+
+		//x = A.colPivHouseholderQr().solve(b);
+		x = A.fullPivLu().solve(b);
 
 		for (int i = 0; i < n_pcomponents; ++i) {
-			outfile << x(i, 1) << " ";
+			outfile << x(i, 0) << " ";
 		}
 	}
 	outfile.close();
@@ -383,6 +430,13 @@ int main(int argc, char *argv[]) {
 	totalTimeClock.Stop();
 	cout << "ALL DONE!" << endl;
 	cout << "Total time taken: " << totalTimeClock.GetTotal() << "s" << endl;
+
+	//cout << "A=" << endl << A << endl;
+	//cout << "x=" << endl << x << endl;
+	//cout << "b=" << endl << b << endl;
+	//cout << "Ax=" << endl << A*x << endl;
+	
+
 
 	return EXIT_SUCCESS;
 }
