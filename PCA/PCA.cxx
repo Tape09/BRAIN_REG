@@ -63,7 +63,7 @@ void copy_img(ImageType::Pointer & from_img, ImageType::Pointer & to_img);
 int count_brain_pix(ImageType::Pointer & img);
 int diff_img(ImageType::Pointer & from_img, ImageType::Pointer & to_img, ImageType::Pointer & out_img);
 int getCommonPix(ImageType::Pointer & in_img, ImageTypeUC::Pointer & common_map);
-void getInverseTfm(ImageType::Pointer & fixed_image, TransformTypeBSpline::Pointer & tfm, TransformTypeDis::Pointer & itfm);
+void getInverseTfm(ImageTypeUC::Pointer & fixed_image, TransformTypeBSpline::Pointer & tfm, TransformTypeDis::Pointer & itfm);
 void getLabelImage(ImageType::Pointer & image, Image<unsigned char, 3>::Pointer & out_image, int n_classes);
 void getBrain(ImageType::Pointer & image, Image<unsigned char, 3>::Pointer & out_image, int n_bins = 100);
 
@@ -182,6 +182,7 @@ int main(int argc, char *argv[]) {
 	
 	//vector<ImageType::Pointer> images;
 	vector<TransformTypeDis::Pointer> inv_tfms;
+	vector<TransformTypeBSpline::Pointer> tfms;
 	
 
 	Directory::Pointer input_img_dir = Directory::New();
@@ -217,7 +218,7 @@ int main(int argc, char *argv[]) {
 
 		img_name = fn_prefix + img_names[i] + fn_img_suffix;
 		img_path = input_img_dir_path + "/" + img_name;
-		cout << "Processing Image " << img_name << "- " << i + 1 << "/" << img_names.size() << endl;
+		cout << "Reading Image " << img_name << " - " << i + 1 << "/" << img_names.size() << endl;
 		
 
 		tfm_name = fn_prefix + img_names[i] + fn_tfm_suffix;
@@ -246,11 +247,13 @@ int main(int argc, char *argv[]) {
 			tfm_reader->Update();
 
 			TransformTypeBSpline::Pointer tfm = static_cast<TransformTypeBSpline*>(tfm_reader->GetTransformList()->back().GetPointer());
-			TransformTypeDis::Pointer itfm = TransformTypeDis::New();
 
-			getInverseTfm(temp_img, tfm, itfm);
+			tfms.push_back(tfm);
 
-			inv_tfms.push_back(itfm);
+			//TransformTypeDis::Pointer itfm = TransformTypeDis::New();
+			//getInverseTfm(temp_img, tfm, itfm);
+
+			//inv_tfms.push_back(itfm);
 		} catch (ExceptionObject & err) {
 			cerr << err << endl;
 			return EXIT_FAILURE;
@@ -258,7 +261,7 @@ int main(int argc, char *argv[]) {
 	}
 
 
-	if (inv_tfms.size() < 2) {
+	if (tfms.size() < 2) {
 		cerr << "NOT ENOUGH IMAGES" << endl;
 		return EXIT_FAILURE;
 	}
@@ -282,6 +285,9 @@ int main(int argc, char *argv[]) {
 	//	cout << "n common pixels: " << n_common << endl;
 	//}
 
+
+
+
 	WriterTypeUC::Pointer mask_writer = WriterTypeUC::New();
 	string mask_fn = output_dir_path + "/" + "common_mask.nii";
 	mask_writer->SetFileName(mask_fn);
@@ -289,14 +295,26 @@ int main(int argc, char *argv[]) {
 	mask_writer->Update();
 
 	//cout << "asfd" << endl;
-	vector<ImageTypePCA::Pointer> images_PCA(inv_tfms.size());
+	vector<ImageTypePCA::Pointer> images_PCA(tfms.size());
 	ImageTypePCA::RegionType region;
 	itk::Size<2> sz;
 	sz[0] = 3;
 	sz[1] = n_common;
 	region.SetSize(sz);
 
-	for (int i = 0; i < inv_tfms.size(); ++i) {
+	cout << endl;
+	//for (int i = 0; i < inv_tfms.size(); ++i) {
+	for (int i = 0; i < tfms.size(); ++i) {
+		cout << "Processing Image " << i + 1 << "/" << tfms.size() << endl;
+		TransformTypeDis::Pointer itfm = TransformTypeDis::New();
+
+		try {			
+			//getInverseTfm(common_map, tfms[i], itfm);
+		} catch (itk::ExceptionObject & e) {
+			cerr << e << endl;
+			exit(EXIT_FAILURE);
+		}
+
 		images_PCA[i] = ImageTypePCA::New();
 		images_PCA[i]->SetRegions(region);
 		images_PCA[i]->Allocate();
@@ -313,7 +331,9 @@ int main(int argc, char *argv[]) {
 			if (common_val > 0.5) {
 				img_idx = common_itr.GetIndex();
 				common_map->TransformIndexToPhysicalPoint(img_idx, img_point);
-				img_point = inv_tfms[i]->TransformPoint(img_point);
+				//img_point = inv_tfms[i]->TransformPoint(img_point);
+				//img_point = itfm->TransformPoint(img_point);
+				img_point = tfms[i]->TransformPoint(img_point);
 				pcaimg_itr.Set(img_point[0]);
 				++pcaimg_itr;
 				pcaimg_itr.Set(img_point[1]);
@@ -325,7 +345,8 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	inv_tfms.clear();
+	//inv_tfms.clear();
+	//tfms.clear();
 
 	n_pcomponents = uint(images_PCA.size());
 
@@ -345,12 +366,16 @@ int main(int argc, char *argv[]) {
 	clock.Stop();
 	cout << "Time taken: " << clock.GetTotal() << "s" << endl;
 
+	ProjectorType::BasisImagePointerVector basis_image_vector;
+	ProjectorType::BasisImagePointer mean_image;
+
 	cout << "Printing..." << endl;
 	string fn;
 	fn = output_dir_path + "/mean.mhd";
 	WriterTypePCA::Pointer pca_writer = WriterTypePCA::New();
 	pca_writer->SetFileName(fn);
 	pca_writer->SetInput(estimator->GetOutput(0));
+	mean_image = estimator->GetOutput(0);
 
 	try {
 		pca_writer->Update();
@@ -358,11 +383,12 @@ int main(int argc, char *argv[]) {
 		cerr << err << endl;
 		return EXIT_FAILURE;
 	}
-	
+
 	for (int i = 1; i < n_pcomponents+1; ++i) {
 		fn = output_dir_path + "/PC_" + to_string(i) + ".mhd";
 		pca_writer->SetFileName(fn);
 		pca_writer->SetInput(estimator->GetOutput(i));
+		basis_image_vector.push_back(estimator->GetOutput(i));
 		try {
 			pca_writer->Update();
 		} catch (ExceptionObject & err) {
@@ -371,12 +397,25 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	
+
 	// PROPERTIES
-	cout << "Calculating x..." << endl;
+	cout << "Calculating projections..." << endl;
 
 	// set up projector
 	ProjectorType::Pointer projector = ProjectorType::New();
-	projector->SetBasisFromModel(estimator);
+	//projector->SetBasisFromModel(estimator);
+	
+	projector->SetMeanImage(mean_image);
+	projector->SetBasisImages(basis_image_vector);
+	
+	for (int q = 0; q < images_PCA.size(); ++q) {
+		images_PCA[q] = NULL;
+	}
+
+	estimator = NULL;
+	//std::cin.ignore();
+	//return 0;
 
 	// set up matrix
 	Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> A;
@@ -388,23 +427,58 @@ int main(int argc, char *argv[]) {
 	Eigen::Matrix<double, Eigen::Dynamic, 1> x;
 	x.resize(n_pcomponents, 1);
 
+	Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> G;
+	G.resize(n_pcomponents, n_pcomponents);
+
 	ProjectorType::BasisVectorType projection;
 
-	for (int img_idx = 0; img_idx < images_PCA.size(); ++img_idx) {
+	
+	for (int j = 0; j < n_pcomponents; ++j) {
 
-		projector->SetImage(images_PCA[img_idx]);
+		ImageTypePCA::Pointer PCA_image = ImageTypePCA::New();
+		PCA_image->SetRegions(region);
+		PCA_image->Allocate();
+
+		//itk::ImageRegionIteratorWithIndex<ImageType> img_itr(images[i], images[i]->GetBufferedRegion());
+		itk::ImageRegionIteratorWithIndex<ImageTypeUC> common_itr(common_map, common_map->GetBufferedRegion());
+		itk::ImageRegionIteratorWithIndex<ImageTypePCA> pcaimg_itr(PCA_image, PCA_image->GetBufferedRegion());
+
+		unsigned int common_val;
+		ImageType::IndexType img_idx;
+		Point<double, 3> img_point;
+		while (!common_itr.IsAtEnd()) {
+			common_val = common_itr.Get();
+			if (common_val > 0.5) {
+				img_idx = common_itr.GetIndex();
+				common_map->TransformIndexToPhysicalPoint(img_idx, img_point);
+				img_point = tfms[j]->TransformPoint(img_point);
+				pcaimg_itr.Set(img_point[0]);
+				++pcaimg_itr;
+				pcaimg_itr.Set(img_point[1]);
+				++pcaimg_itr;
+				pcaimg_itr.Set(img_point[2]);
+				++pcaimg_itr;
+			}
+			++common_itr;
+		}
+
+		projector->SetImage(PCA_image);
 		projector->Compute();
 		projection = projector->GetProjection();
 		//cout << projection.size() << endl;
 		//cout << projection << endl;
 		for (int i = 0; i < projection.size(); ++i) {
-			A(img_idx, i) = projection[i];
+			A(j, i) = projection[i];
 		}
+		cout << "Progress: " << j * 100 / n_pcomponents << "%\r";
 
 	}
 
+	cout << " " << endl;
+
 	images_PCA.clear();
 
+	cout << "Calculating x..." << endl;
 	ofstream outfile;
 	outfile.precision(25);
 	outfile.open(output_dir_path + "/properties.txt");
@@ -419,13 +493,24 @@ int main(int argc, char *argv[]) {
 		//x = A.inverse() * b;
 
 		//x = A.colPivHouseholderQr().solve(b);
-		x = A.fullPivLu().solve(b);
+		//x = A.fullPivLu().solve(b);
+
+		G = Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic>::Identity(n_pcomponents, n_pcomponents);
+		double alpha = 1.0;
+
+		G = alpha * G;
+
+		
+
+		x = (A.transpose() * A + G.transpose() * G).inverse() * A.transpose() * b;
 
 		for (int i = 0; i < n_pcomponents; ++i) {
 			outfile << x(i, 0) << " ";
 		}
+		cout << "Progress: " << n * 100 / prop_names.size() << "%\r";
 	}
 	outfile.close();
+	cout << " " << endl;
 	
 	totalTimeClock.Stop();
 	cout << "ALL DONE!" << endl;
@@ -531,7 +616,8 @@ int getCommonPix(ImageType::Pointer & in_img, ImageTypeUC::Pointer & common_map)
 
 }
 
-void getInverseTfm(ImageType::Pointer & fixed_image, TransformTypeBSpline::Pointer & tfm, TransformTypeDis::Pointer & itfm) {
+
+void getInverseTfm(ImageTypeUC::Pointer & fixed_image, TransformTypeBSpline::Pointer & tfm, TransformTypeDis::Pointer & itfm) {
 	itk::TimeProbe clock;
 	clock.Start();
 	// inverse transform

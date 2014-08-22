@@ -18,6 +18,8 @@
 #include "itkMinimumMaximumImageCalculator.h"
 #include "itkImagePCADecompositionCalculator.h"
 #include "itkCSVArray2DFileReader.h"
+#include "itkMultiplyImageFilter.h"
+#include "itkAddImageFilter.h"
 
 #include <fstream>
 #include <iostream>
@@ -25,9 +27,14 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 
+
+
 typedef itk::Image< double, 3 > ImageType;
 typedef itk::Image< unsigned char, 3 > ImageTypeUC;
 typedef itk::Image< double, 2 > ImageTypePCA;
+
+typedef itk::AddImageFilter<ImageTypePCA> AddFilterType;
+typedef itk::MultiplyImageFilter<ImageTypePCA> MultFilterType;
 
 typedef unsigned uint;
 
@@ -77,7 +84,8 @@ int main(int argc, char *argv[]) {
 		cout << " CSV File" << endl;
 		cout << " Input folder" << endl;
 		cout << " Input PCA folder" << endl;
-		cout << " Output name" << endl;
+		cout << " Output folder" << endl;
+		cout << " [Reconstruct]" << endl;
 		return EXIT_FAILURE;
 	}
 	DuplicatorType::Pointer duplicator = DuplicatorType::New();
@@ -121,7 +129,22 @@ int main(int argc, char *argv[]) {
 
 	string input_img_dir(argv[2]);
 	string input_pca_path(argv[3]);
-	string output_name(argv[4]);
+	string output_dir_path(argv[4]);
+	bool reconstruct_images = false;
+	if (argc == 6) reconstruct_images = true;
+
+	Directory::Pointer output_dir = Directory::New();
+
+	try {
+		output_dir->Load(output_dir_path.c_str());
+	} catch (ExceptionObject & err) {
+		cerr << err << endl;
+		return EXIT_FAILURE;
+	}
+
+	if (output_dir->GetNumberOfFiles() == 0) {
+		FileTools::CreateDirectoryA(output_dir_path.c_str());
+	}
 
 	// Set up projector
 	ProjectorType::Pointer projector = ProjectorType::New();
@@ -185,8 +208,14 @@ int main(int argc, char *argv[]) {
 	}
 
 	ofstream myfile;
+	string out_fn = output_dir_path + "/results.txt";
 	myfile.precision(25);
-	myfile.open(output_name, ios::trunc);
+	myfile.open(out_fn, ios::trunc);
+
+	ofstream resfile;
+	string res_fn = output_dir_path + "/res_matlab.txt";
+	resfile.precision(25);
+	resfile.open(res_fn, ios::trunc);
 	for (int i = 0; i < img_names.size(); ++i) {
 
 
@@ -230,8 +259,8 @@ int main(int argc, char *argv[]) {
 		}
 
 		TransformTypeBSpline::Pointer tfm = static_cast<TransformTypeBSpline*>(tfm_reader->GetTransformList()->back().GetPointer());
-		TransformTypeDis::Pointer itfm = TransformTypeDis::New();
-		getInverseTfm(input_image_copy, tfm, itfm);
+		//TransformTypeDis::Pointer itfm = TransformTypeDis::New();
+		//getInverseTfm(input_image_copy, tfm, itfm);
 
 		// Create input image	
 		ImageTypePCA::Pointer input_PCA_image = ImageTypePCA::New();
@@ -250,12 +279,14 @@ int main(int argc, char *argv[]) {
 		double common_val;
 		ImageTypeUC::IndexType common_idx;
 		Point<double, 3> img_point;
+		Point<double, 3> temp_point;
 		while (!common_itr.IsAtEnd()) {
 			common_val = common_itr.Get();
 			if (common_val > 0.5) {
 				common_idx = common_itr.GetIndex();
-				common_map->TransformIndexToPhysicalPoint(common_idx, img_point);
-				img_point = itfm->TransformPoint(img_point);
+				common_map->TransformIndexToPhysicalPoint(common_idx, temp_point);
+				//img_point = itfm->TransformPoint(img_point);
+				img_point = tfm->TransformPoint(temp_point);
 				pcaimg_itr.Set(img_point[0]);
 				++pcaimg_itr;
 				pcaimg_itr.Set(img_point[1]);
@@ -282,8 +313,8 @@ int main(int argc, char *argv[]) {
 
 		Eigen::Matrix<double, Eigen::Dynamic, 1> p;
 		p.resize(projection.size(), 1);
-		for (int i = 0; i < projection.size(); ++i) {
-			p(i, 0) = projection[i];
+		for (int j = 0; j < projection.size(); ++j) {
+			p(j, 0) = projection[j];
 		}
 
 		Eigen::Matrix<double, 1, Eigen::Dynamic> w;
@@ -292,12 +323,13 @@ int main(int argc, char *argv[]) {
 		Eigen::Matrix<double, 1, 1> r;
 
 		
-
+		
 		vector<double> temp_prop;
 		string temp;
 		string line;
 		ifstream infile(input_pca_path + "/properties.txt");
 		if (infile.is_open()) {
+			int p_idx = 0;
 			while (getline(infile, line)) {
 				istringstream ss(line);
 
@@ -317,17 +349,20 @@ int main(int argc, char *argv[]) {
 					return EXIT_FAILURE;
 				}
 
-				for (int i = 0; i < temp_prop.size(); ++i) {
-					w(0, i) = temp_prop[i];
+				for (int j = 0; j < temp_prop.size(); ++j) {
+					w(0, j) = temp_prop[j];
 				}
 
 				//cout << endl;
 				//cout << "w: " << endl << w << endl;
 				//cout << "p: " << endl << p << endl;
 				r = w*p;
+				resfile << data->GetData(img_names[i], prop_names[p_idx]) << " " << r << endl;
+
 
 				cout << r << endl;
 				myfile << r << endl;
+				++p_idx;
 
 			}
 			infile.close();
@@ -350,8 +385,116 @@ int main(int argc, char *argv[]) {
 		myfile << endl << endl;
 		
 
+		if (reconstruct_images) {
+			// GET RECONSTRUCTED IMAGE
+			cout << "Reconstructing image..." << endl;			
+
+			ImageTypePCA::Pointer re_PCA_image = ImageTypePCA::New();
+
+			duplicator_pca->SetInputImage(projector->GetMeanImage());
+			duplicator_pca->Update();
+			re_PCA_image = duplicator_pca->GetOutput();
+
+			AddFilterType::Pointer addFilter = AddFilterType::New();
+			MultFilterType::Pointer multFilter = MultFilterType::New();
+
+			cout << "Creating image from model..." << endl;
+			
+			for (int j = 0; j < projection.size(); ++j) { // iterate over basis_image_vector and projection, use AddFilterType, MultFilterType
+				
+				multFilter->SetInput(projector->GetBasisImages()[j]);
+				multFilter->SetConstant(projection[j]);
+				multFilter->Update();
+
+				addFilter->SetInput1(re_PCA_image);
+				addFilter->SetInput2(multFilter->GetOutput());
+				addFilter->Update();
+
+				re_PCA_image = addFilter->GetOutput();
+				cout << "Progress: " << ((j + 1) * 100 / projection.size()) << "%\r";
+
+			}
+
+			// Decode
+			cout << "Changing formats and coloring..." << endl;
+
+			ImageType::Pointer re_image = ImageType::New();
+			re_image->SetRegions(input_image->GetBufferedRegion());
+			re_image->SetDirection(input_image->GetDirection());
+			re_image->SetOrigin(input_image->GetOrigin());
+			re_image->SetSpacing(input_image->GetSpacing());
+			re_image->Allocate();
+			re_image->FillBuffer(0);
+
+			itk::ImageRegionIteratorWithIndex<ImageTypeUC> c_itr(common_map, common_map->GetBufferedRegion());
+			itk::ImageRegionIteratorWithIndex<ImageType> img_itr(input_image, input_image->GetBufferedRegion());
+			itk::ImageRegionIteratorWithIndex<ImageTypePCA> repcaimg_itr(re_PCA_image, re_PCA_image->GetBufferedRegion());
+
+			ImageType::IndexType index;
+			Point<double, 3> point;
+
+			int count = 1;
+			while (!c_itr.IsAtEnd()) {
+				common_val = c_itr.Get();
+
+				if (common_val > 0.5) {
+					double value = img_itr.Get();
+					
+					point[0] = repcaimg_itr.Get();
+					++repcaimg_itr;
+					point[1] = repcaimg_itr.Get();
+					++repcaimg_itr;
+					point[2] = repcaimg_itr.Get();
+					++repcaimg_itr;				
+
+					re_image->TransformPhysicalPointToIndex(point, index);
+					//cout << index << endl;
+					//re_image->SetPixel(index, value);
+					bool setpix = true;
+					for (int j = 0; j < 3; ++j) {
+						if (index[j] < 0) {
+							//index[j] = 0;
+							setpix = false;
+						}
+
+						if (index[j] >= input_image->GetBufferedRegion().GetSize()[j]) {
+							//index[j] = input_image->GetBufferedRegion().GetSize()[j] - 1;
+							setpix = false;
+						}
+					}
+
+
+					try {
+						//re_image->SetPixel(index, 1);
+						if (setpix)	re_image->SetPixel(index, value);
+					} catch (itk::ExceptionObject & e) {
+						cerr << e << endl;
+						exit(EXIT_FAILURE);
+					}
+					
+					if (count % (n_common / 100) == 0) {
+						cout << "Progress: " << count * 100 / n_common << "%\r";
+					}
+
+					++count;
+				}
+
+				++c_itr;
+				++img_itr;
+			}
+
+			WriterType::Pointer writer = WriterType::New();
+			writer->SetInput(re_image);
+			string re_fn = output_dir_path + "/re_" + img_name;
+			writer->SetFileName(re_fn);
+			writer->Update();
+		}
+
+
 	}
 	myfile.close();
+	resfile.close();
+	cout << "ALL DONE!" << endl;
 	return EXIT_SUCCESS;
 	// ________________________________
 
