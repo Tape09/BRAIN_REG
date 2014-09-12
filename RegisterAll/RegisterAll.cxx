@@ -112,9 +112,9 @@ int main(int argc, char *argv[]) {
 	int n = 0;
 	for (int i = 0; i < data->GetRowHeaders().size(); ++i) {
 		//cout << data->GetData(data->GetRowHeaders()[i], "Age") << endl;
-		if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
+		/*if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
 			++n;
-		}
+		}*/
 	}
 
 	cout << data->GetData(data->GetRowHeaders()[0], data->GetColumnHeaders()[0]) << endl;
@@ -135,35 +135,35 @@ int main(int argc, char *argv[]) {
 	for (int i = 0; i < data->GetRowHeaders().size(); ++i) {
 		//cout << input_dir_path + "/" + data->GetRowHeaders()[i] + "/T1.nii.gz" << endl;
 	
-		if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
-			if (!found_fixed) {
-				fixed_image_path = input_dir_path + "/" + "BRCAD" + data->GetRowHeaders()[i] + "/T1.nii.gz";
-				found_fixed = true;
-			}
-
-			string base_name = "BRCAD" + data->GetRowHeaders()[i];
-			string moving_image_path = input_dir_path + "/" + base_name + "/T1.nii.gz";
-			string output_img_path = output_img_dir_patha + "/" + base_name + ".nii";
-			string output_tfm_path = output_tfm_dir_patha + "/" + base_name + ".tfm";
-
-			string command;
-			command = registration;
-			command += " " + fixed_image_path;
-			command += " " + moving_image_path;
-			command += " " + output_img_path;
-			command += " " + output_tfm_path;
-			command += " " + transform_type;
-
-			cout << "--" << endl;
-			cout << "fixed_image: " << fixed_image_path << endl;
-			cout << "moving_image: " << moving_image_path << endl;
-			cout << "output_image: " << output_img_path << endl;
-			cout << "output_transform: " << output_tfm_path << endl;
-			cout << "transform_type: " << transform_type << endl;
-			//cout << "command: " << command << endl;
-			cout << "--" << endl;
-			system(command.c_str());
+		//if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
+		if (!found_fixed) {
+			fixed_image_path = input_dir_path + "/" + "BRCAD" + data->GetRowHeaders()[i] + "/T1.nii.gz";
+			found_fixed = true;
 		}
+
+		string base_name = "BRCAD" + data->GetRowHeaders()[i];
+		string moving_image_path = input_dir_path + "/" + base_name + "/T1.nii.gz";
+		string output_img_path = output_img_dir_patha + "/" + base_name + ".nii";
+		string output_tfm_path = output_tfm_dir_patha + "/" + base_name + ".tfm";
+
+		string command;
+		command = registration;
+		command += " " + fixed_image_path;
+		command += " " + moving_image_path;
+		command += " " + output_img_path;
+		command += " " + output_tfm_path;
+		command += " " + transform_type;
+
+		cout << "--" << endl;
+		cout << "fixed_image: " << fixed_image_path << endl;
+		cout << "moving_image: " << moving_image_path << endl;
+		cout << "output_image: " << output_img_path << endl;
+		cout << "output_transform: " << output_tfm_path << endl;
+		cout << "transform_type: " << transform_type << endl;
+		//cout << "command: " << command << endl;
+		cout << "--" << endl;
+		system(command.c_str());
+		//}
 	}
 
 	transform_type = "bspline";
@@ -171,31 +171,31 @@ int main(int argc, char *argv[]) {
 		//cout << input_dir_path + "/" + data->GetRowHeaders()[i] + "/T1.nii.gz" << endl;
 		//cout << (targets==data->GetData(data->GetRowHeaders()[i], "Status")) << endl;
 
-		if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
+		//if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
 
-			string base_name = "BRCAD" + data->GetRowHeaders()[i];
-			string moving_image_path = output_img_dir_patha + "/" + base_name + ".nii";
-			string output_img_path = output_img_dir_pathb + "/" + base_name + ".nii";
-			string output_tfm_path = output_tfm_dir_pathb + "/" + base_name + ".tfm";
+		string base_name = "BRCAD" + data->GetRowHeaders()[i];
+		string moving_image_path = output_img_dir_patha + "/" + base_name + ".nii";
+		string output_img_path = output_img_dir_pathb + "/" + base_name + ".nii";
+		string output_tfm_path = output_tfm_dir_pathb + "/" + base_name + ".tfm";
 
-			string command;
-			command = registration;
-			command += " " + fixed_image_path;
-			command += " " + moving_image_path;
-			command += " " + output_img_path;
-			command += " " + output_tfm_path;
-			command += " " + transform_type;
+		string command;
+		command = registration;
+		command += " " + fixed_image_path;
+		command += " " + moving_image_path;
+		command += " " + output_img_path;
+		command += " " + output_tfm_path;
+		command += " " + transform_type;
 
-			cout << "--" << endl;
-			cout << "fixed_image: " << fixed_image_path << endl;
-			cout << "moving_image: " << moving_image_path << endl;
-			cout << "output_image: " << output_img_path << endl;
-			cout << "output_transform: " << output_tfm_path << endl;
-			cout << "transform_type: " << transform_type << endl;
-			//cout << "command: " << command << endl;
-			cout << "--" << endl;
-			system(command.c_str());
-		}
+		cout << "--" << endl;
+		cout << "fixed_image: " << fixed_image_path << endl;
+		cout << "moving_image: " << moving_image_path << endl;
+		cout << "output_image: " << output_img_path << endl;
+		cout << "output_transform: " << output_tfm_path << endl;
+		cout << "transform_type: " << transform_type << endl;
+		cout << "command: " << command << endl;
+		cout << "--" << endl;
+		system(command.c_str());
+		//}
 	}
 
 

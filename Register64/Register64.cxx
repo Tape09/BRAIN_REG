@@ -245,7 +245,7 @@ public:
 
 void SmoothAndNormalize(ImageType::Pointer & input_image, ImageType::Pointer & output_image, double variance = 2.0);
 void RegisterImages_MIAffine(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeAffine::Pointer & out_transform);
-void RegisterImages_MIAffineMulti(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeAffine::Pointer & out_transform);
+//void RegisterImages_MIAffineMulti(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeAffine::Pointer & out_transform);
 void RegisterImages_MSAffine(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeAffine::Pointer & out_transform);
 void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeBSpline::Pointer & out_transform);
 void RegisterImages_MSBSpline(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeBSpline::Pointer & out_transform);
@@ -315,16 +315,8 @@ int main(int argc, char *argv[])
 		RegisterImages_MIBSpline(fixed_image, moving_image, finalTransformBSpline);
 		resample->SetTransform(finalTransformBSpline);
 		//bspline = true;		
-	} else if (strcmp(argv[5], "bspline2") == 0) { // DONT USE, TESTING ONLY
-		RegisterImages_MSBSpline(fixed_image, moving_image, finalTransformBSpline);
-		resample->SetTransform(finalTransformBSpline);
 	} else if (strcmp(argv[5], "affine") == 0) {
 		RegisterImages_MSAffine(fixed_image, moving_image, finalTransformAffine);		
-		SmoothAndNormalize(fixed_image, fixed_image);
-		SmoothAndNormalize(moving_image, moving_image);
-		RegisterImages_MIAffine(fixed_image, moving_image, finalTransformAffine);
-		resample->SetTransform(finalTransformAffine);
-	} else if (strcmp(argv[5], "affine2") == 0) { // DONT USE, TESTING ONLY
 		SmoothAndNormalize(fixed_image, fixed_image);
 		SmoothAndNormalize(moving_image, moving_image);
 		RegisterImages_MIAffine(fixed_image, moving_image, finalTransformAffine);
@@ -683,157 +675,6 @@ void RegisterImages_MIAffine(ImageType::Pointer & fixed_image, ImageType::Pointe
 	out_transform->SetFixedParameters(transform->GetFixedParameters());
 }
 
-void RegisterImages_MIAffineMulti(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeAffine::Pointer & out_transform) {
-	typedef itk::MultiResolutionImageRegistrationMethod<ImageType, ImageType> MultiResRegistrationType;
-	typedef itk::MultiResolutionPyramidImageFilter<ImageType, ImageType> ImagePyramidType;
-	typedef itk::LinearInterpolateImageFunction<ImageType, double> InterpolatorType;
-	typedef itk::ImageRegistrationMethod<ImageType, ImageType> RegistrationType;
-	typedef itk::RegularStepGradientDescentOptimizer OptimizerType;
-	//typedef itk::MutualInformationImageToImageMetric<ImageType, ImageType> MetricTypeMI;
-	typedef itk::MattesMutualInformationImageToImageMetric< ImageType, ImageType > MetricTypeMI;
-	typedef RegistrationType::ParametersType ParametersType;
-
-	MetricTypeMI::Pointer metric = MetricTypeMI::New();
-	TransformTypeAffine::Pointer transform = TransformTypeAffine::New();
-	OptimizerType::Pointer optimizer = OptimizerType::New();
-	InterpolatorType::Pointer interpolator = InterpolatorType::New();
-	MultiResRegistrationType::Pointer registration = MultiResRegistrationType::New();
-
-	ImagePyramidType::Pointer fixedImagePyramid = ImagePyramidType::New();
-	ImagePyramidType::Pointer movingImagePyramid = ImagePyramidType::New();
-
-	// REGISTRATION PARAMETERS BEGIN
-	unsigned int n_levels = 2;
-	unsigned int starting_sfactor = 2;
-	fixedImagePyramid->SetNumberOfLevels(n_levels);
-	fixedImagePyramid->SetStartingShrinkFactors(starting_sfactor);
-	movingImagePyramid->SetNumberOfLevels(n_levels);
-	movingImagePyramid->SetStartingShrinkFactors(starting_sfactor);
-	registration->SetNumberOfThreads(1);
-	// REGISTRATION PARAMETERS END
-
-
-
-	// OPTIMIZER PARAMETERS BEGIN
-	optimizer->SetMaximumStepLength(1.0);
-	optimizer->SetMinimumStepLength(0.001);
-	optimizer->SetNumberOfIterations(300);
-	
-	//optimizer->MaximizeOn();
-	optimizer->MinimizeOn();
-
-	double translationScale = 1.0 / 1000.0;
-	typedef OptimizerType::ScalesType OptimizerScalesType;
-	OptimizerScalesType optimizerScales(transform->GetNumberOfParameters());
-	optimizerScales[0] = 1.0;
-	optimizerScales[1] = 1.0;
-	optimizerScales[2] = 1.0;
-	optimizerScales[3] = 1.0;
-	optimizerScales[4] = 1.0;
-	optimizerScales[5] = 1.0;
-	optimizerScales[6] = 1.0;
-	optimizerScales[7] = 1.0;
-	optimizerScales[8] = 1.0;
-	optimizerScales[9] = translationScale;
-	optimizerScales[10] = translationScale;
-	optimizerScales[11] = translationScale;
-	optimizer->SetScales(optimizerScales);
-
-	double fixed_volume;
-	vector<double> fixed_center;
-	getVolumeAndCenter(fixed_image, fixed_volume, fixed_center);
-
-	double moving_volume;
-	vector<double> moving_center;
-	getVolumeAndCenter(moving_image, moving_volume, moving_center);
-
-	double scale = pow(fixed_volume / moving_volume, 1.0 / 3.0);
-	vector<double> transl(3, 0);
-	transl[0] = (fixed_center[0] - moving_center[0]) * scale;
-	transl[1] = (fixed_center[1] - moving_center[1]) * scale;
-	transl[2] = (fixed_center[2] - moving_center[2]) * scale;
-
-	ParametersType initialParameters(transform->GetNumberOfParameters());
-	initialParameters[0] = scale;
-	initialParameters[1] = 0.0;
-	initialParameters[2] = 0.0;
-	initialParameters[3] = 0.0;
-	initialParameters[4] = scale;
-	initialParameters[5] = 0.0;
-	initialParameters[6] = 0.0;
-	initialParameters[7] = 0.0;
-	initialParameters[8] = scale;
-
-	initialParameters[9] = transl[0];
-	initialParameters[10] = transl[1];
-	initialParameters[11] = -transl[2];
-
-	registration->SetInitialTransformParameters(initialParameters);
-	// OPTIMIZER PARAMETERS END
-
-	// METRIC PARAMETERS BEGIN
-	metric->SetNumberOfHistogramBins(500);
-	const unsigned int numberOfPixels = fixed_image->GetBufferedRegion().GetNumberOfPixels();
-	const unsigned int numberOfSamples = static_cast<unsigned int>(numberOfPixels * 0.1);
-	metric->SetNumberOfSpatialSamples(numberOfSamples);
-	// METRIC PARAMETERS END
-
-	// OBSERVER
-	CommandIterationUpdate::Pointer observer = CommandIterationUpdate::New();
-	optimizer->AddObserver(itk::IterationEvent(), observer);
-
-	RegistrationInterfaceCommand<MultiResRegistrationType>::Pointer command = RegistrationInterfaceCommand<MultiResRegistrationType>::New();
-	registration->AddObserver(itk::IterationEvent(), command);
-	//
-
-	registration->SetMetric(metric);
-	registration->SetOptimizer(optimizer);
-	registration->SetTransform(transform);
-	registration->SetInterpolator(interpolator);	
-
-	registration->SetFixedImagePyramid(fixedImagePyramid);
-	registration->SetMovingImagePyramid(movingImagePyramid);
-
-	registration->SetFixedImage(fixed_image);
-	registration->SetMovingImage(moving_image);
-	registration->SetFixedImageRegion(fixed_image->GetBufferedRegion());
-
-	registration->SetNumberOfLevels(n_levels);
-	//std::cout << " Numb. Samples = " << metric->GetNumberOfSpatialSamples() << std::endl;
-
-	try {
-		std::cout << "-= Mutual Information Affine Transform Image Registration =-" << std::endl;
-		cout << "Levels: " << fixedImagePyramid->GetNumberOfLevels() << endl;
-		cout << "Schedule: " << endl << fixedImagePyramid->GetSchedule() << endl;
-		registration->Update();
-		std::cout << "Optimizer stop condition: " << registration->GetOptimizer()->GetStopConditionDescription() << std::endl;
-	} catch (itk::ExceptionObject & err) {
-		std::cout << "ExceptionObject caught !" << std::endl;
-		std::cout << err << std::endl;
-		exit(EXIT_FAILURE);
-	}
-
-	ParametersType finalParameters = registration->GetLastTransformParameters();
-
-	std::cout << "Final Parameters: " << finalParameters << std::endl;
-
-	unsigned int numberOfIterations = optimizer->GetCurrentIteration();
-
-	double bestValue = optimizer->GetValue();
-
-	// Print out results
-	std::cout << std::endl;
-	std::cout << "Result = " << std::endl;
-	std::cout << " Iterations    = " << numberOfIterations << std::endl;
-	std::cout << " Metric value  = " << bestValue << std::endl;
-	std::cout << " Numb. Samples = " << metric->GetNumberOfSpatialSamples() << std::endl;
-
-
-	out_transform = TransformTypeAffine::New();
-	out_transform->SetParameters(finalParameters);
-	out_transform->SetFixedParameters(transform->GetFixedParameters());
-}
-
 void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeBSpline::Pointer & out_transform) {
 	typedef itk::LinearInterpolateImageFunction<ImageType, double> InterpolatorType;
 	typedef itk::ImageRegistrationMethod<ImageType, ImageType> RegistrationType;
@@ -949,7 +790,6 @@ void RegisterImages_MIBSpline(ImageType::Pointer & fixed_image, ImageType::Point
 	out_transform->SetTransformDomainDirection(fixed_image->GetDirection());
 	out_transform->SetParameters(finalParameters);
 }
-
 
 void RegisterImages_MSBSpline(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image, TransformTypeBSpline::Pointer & out_transform) {
 	
@@ -1226,7 +1066,6 @@ void getBrain(ImageType::Pointer & image, ImageType::Pointer & out_image, int n_
 
 	out_image = medianFilter->GetOutput();
 }
-
 
 void initTrans(ImageType::Pointer & fixed_image, ImageType::Pointer & moving_image) {
 	double fixed_volume;
