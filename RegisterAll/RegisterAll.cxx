@@ -137,11 +137,13 @@ int main(int argc, char *argv[]) {
 	
 		//if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
 		if (!found_fixed) {
-			fixed_image_path = input_dir_path + "/" + "BRCAD" + data->GetRowHeaders()[i] + "/T1.nii.gz";
+			//fixed_image_path = input_dir_path + "/" + "BRCAD" + data->GetRowHeaders()[i] + "/T1.nii.gz";
+			fixed_image_path = input_dir_path + "/" + data->GetRowHeaders()[i] + "/T1.nii.gz";
 			found_fixed = true;
 		}
 
-		string base_name = "BRCAD" + data->GetRowHeaders()[i];
+		string base_name = data->GetRowHeaders()[i];
+		//string base_name = "BRCAD" + data->GetRowHeaders()[i];
 		string moving_image_path = input_dir_path + "/" + base_name + "/T1.nii.gz";
 		string output_img_path = output_img_dir_patha + "/" + base_name + ".nii";
 		string output_tfm_path = output_tfm_dir_patha + "/" + base_name + ".tfm";
@@ -173,7 +175,8 @@ int main(int argc, char *argv[]) {
 
 		//if (targets == data->GetData(data->GetRowHeaders()[i], "Status")) {
 
-		string base_name = "BRCAD" + data->GetRowHeaders()[i];
+		string base_name = data->GetRowHeaders()[i];
+		//string base_name = "BRCAD" + data->GetRowHeaders()[i];
 		string moving_image_path = output_img_dir_patha + "/" + base_name + ".nii";
 		string output_img_path = output_img_dir_pathb + "/" + base_name + ".nii";
 		string output_tfm_path = output_tfm_dir_pathb + "/" + base_name + ".tfm";
