@@ -217,7 +217,7 @@ public:
 		double diff = abs(last_metric_val - optimizer->GetValue());
 		//cout << "diff: " << diff << endl;
 		last_metric_val = optimizer->GetValue();
-		if (diff < 0.0003) {
+		if (diff < 0.001) {
 			++counter;			
 			//cout << "count: " << counter << endl;
 			if (counter > 10) {
