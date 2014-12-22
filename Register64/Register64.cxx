@@ -54,7 +54,8 @@ typedef itk::AffineTransform<double, 3> TransformTypeAffine;
 typedef itk::DisplacementFieldTransform<double, 3> TransformTypeDis;
 
 const int k = 20;
-
+const double bsp_metric_step_thresh = 0.001;
+const double aff_metric_step_thresh = 5e-5;
 
 using namespace itk;
 using namespace std;
@@ -159,7 +160,7 @@ public:
 		cout << "avg: " << avg << endl;
 		last_metric_val = optimizer->GetValue();
 
-		if (avg < 5e-5 && optimizer->GetCurrentIteration() > 25) {
+		if (avg < aff_metric_step_thresh && optimizer->GetCurrentIteration() > 25) {
 			++counter;
 			//cout << "count: " << counter << endl;
 			if (counter > 10) {
@@ -217,7 +218,7 @@ public:
 		double diff = abs(last_metric_val - optimizer->GetValue());
 		//cout << "diff: " << diff << endl;
 		last_metric_val = optimizer->GetValue();
-		if (diff < 0.001) {
+		if (diff < bsp_metric_step_thresh) {
 			++counter;			
 			//cout << "count: " << counter << endl;
 			if (counter > 10) {
