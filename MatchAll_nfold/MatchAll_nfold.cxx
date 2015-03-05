@@ -35,7 +35,6 @@ int main(int argc, char *argv[]) {
 		cout << " Temp Folder" << endl;
 		cout << " Output Path" << endl;
 		cout << " PCA.exe" << endl;
-		//cout << " sigpix.m" << endl;
 		cout << " MatchModel.exe" << endl;
 		//cout << " [STOP AT]" << endl;
 		
@@ -45,9 +44,7 @@ int main(int argc, char *argv[]) {
 
 	double pval_thresh = 0.01;
 
-	//string asdf = "start ../Predict.exe";
-	//system(asdf.c_str());
-	//return 0;
+
 
 	typedef CSVNumericObjectFileWriter<double> WriterTypeCSV;
 	typedef itk::CSVArray2DFileReader<double> ReaderTypeCSV;
@@ -58,8 +55,6 @@ int main(int argc, char *argv[]) {
 	string temp_path(argv[4]);
 	string output_path(argv[5]);
 	string pca_exe(argv[6]);
-	//string sigpix_m(argv[6]);
-	//sigpix_m = sigpix_m.substr(0, sigpix_m.size() - 2);
 	string match_exe(argv[7]);
 	string sp = " ";
 	string start = "start";
@@ -121,24 +116,15 @@ int main(int argc, char *argv[]) {
 		FileTools::CreateDirectoryA(temp_path.c_str());
 	}
 
-	//string stop_at;
-	//if (argc >= 8) {
-	//	stop_at = argv[7];		
-	//} else {
-	//	stop_at = img_names.back();
-	//}
-
-	//string ttt = "matlab -nodisplay -nosplash -nojvm -wait -r \"test_m('" + temp_path + "/../aaa');exit\"";
-	//system(ttt.c_str());
-	//return 0;
 
 	cout << "argc: " << argc << endl;
-	//cout << "stop at: " << stop_at << endl;
+
 
 	int n_images = data->GetRowHeaders().size();
 	cout << "n_images: " << n_images << endl;
 	double partition_size = double(n_images) / k;
 	int partition_size_int = partition_size;
+	cout << "partition_size: " << partition_size_int << endl;
 	int out_begin = 0;
 	int out_end = partition_size_int;
 
@@ -147,8 +133,8 @@ int main(int argc, char *argv[]) {
 			out_end = n_images;
 		}
 
-		cout << "begin: " << out_begin << endl;
-		cout << "end: " << out_end << endl;
+		cout << " begin: " << out_begin << endl;
+		cout << " end: " << out_end << endl;
 
 
 		//test csv
@@ -205,7 +191,7 @@ int main(int argc, char *argv[]) {
 		}
 		csv_train_writer->SetFieldDelimiterCharacter(';');
 
-		vnl_matrix<double> big_mat(data->GetMatrix().rows()-1, data->GetMatrix().cols());
+		vnl_matrix<double> big_mat(data->GetMatrix().rows()-(out_end - out_begin), data->GetMatrix().cols());
 		int j_idx = 0;
 		for (int j = 0; j < data->GetMatrix().rows(); ++j) {
 			if (j >= out_begin && j < out_end) continue;
@@ -224,7 +210,7 @@ int main(int argc, char *argv[]) {
 
 		// DO STUFF
 
-		cout << "Images left out: " << endl;
+		cout << "  Images left out: " << endl;
 		for (int j = out_begin; j < out_end; ++j) {
 			cout << "   " << data->GetRowHeaders()[j] << endl;
 		}
@@ -238,9 +224,9 @@ int main(int argc, char *argv[]) {
 		string pca_out_dir = temp_path;
 		string pca_model_file = output_path + "/model_" + test_name + ".txt";
 		string pca_command = "\"\"" + pca_exe + "\"\"" + sp + pca_prop_file + sp + pca_input_dir + sp + pca_out_dir + sp + pca_model_file + sp + "30";
-		cout << pca_command << endl;
-		//cout << "PCA..." << endl;
-		//system(pca_command.c_str());
+		//cout << pca_command << endl;
+		cout << "PCA..." << endl;
+		system(pca_command.c_str());
 
 		//PREDICT
 		string match_prop_file = test_csv_fn;
@@ -249,9 +235,9 @@ int main(int argc, char *argv[]) {
 		string match_output_dir = output_path;
 		string match_proj_file = output_path + "/proj_" + test_name + ".txt";
 		string match_command = "\"\"" + match_exe + "\"\"" + sp + match_prop_file + sp + match_input_dir + sp + match_pca_dir + sp + match_output_dir + sp + match_proj_file;
-		cout << match_command << endl;
-		//cout << "predicting..." << endl;
-		//system(match_command.c_str());
+		//cout << match_command << endl;
+		cout << "predicting..." << endl;
+		system(match_command.c_str());
 
 		
 		out_begin += partition_size_int;
